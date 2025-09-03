@@ -1,87 +1,108 @@
 import OpenAI from 'openai'
 
+// Initialize OpenAI client with API key from environment variables
 const openai = new OpenAI({
-  apiKey: import.meta.env.VITE_OPENAI_API_KEY || 'demo-key',
-  baseURL: "https://openrouter.ai/api/v1",
-  dangerouslyAllowBrowser: true,
+  apiKey: import.meta.env.VITE_OPENAI_API_KEY,
+  dangerouslyAllowBrowser: true, // Note: In production, API calls should be made from a backend service
 })
 
-export async function generateSummary(paperUrl) {
+/**
+ * Extracts content from a paper URL or DOI
+ * @param {string} paperUrl - URL or DOI of the paper
+ * @returns {Promise<string>} - Paper content as text
+ */
+async function extractPaperContent(paperUrl) {
   try {
-    // Simulate API delay for demo
-    await new Promise(resolve => setTimeout(resolve, 2000))
+    // Handle DOI format (convert to URL if needed)
+    if (paperUrl.startsWith('10.') && !paperUrl.startsWith('http')) {
+      paperUrl = `https://doi.org/${paperUrl}`;
+    }
     
+    // For demo purposes, we'll simulate content extraction
     // In a real implementation, you would:
-    // 1. Extract paper content from the URL
-    // 2. Send content to OpenAI for summarization
-    // 3. Parse and return the structured response
+    // 1. Use a PDF extraction library or API for PDF papers
+    // 2. Use web scraping for HTML papers
+    // 3. Use publisher APIs when available
     
-    // For demo purposes, return mock data based on URL
-    if (paperUrl.includes('1706.03762') || paperUrl.toLowerCase().includes('attention')) {
-      return {
-        title: 'Attention Is All You Need',
-        summary: 'This paper introduces the Transformer architecture, a novel neural network architecture based solely on attention mechanisms. The model achieves state-of-the-art results on machine translation tasks while being more parallelizable and requiring significantly less time to train. The architecture eliminates recurrence and convolutions entirely, relying instead on attention mechanisms to draw global dependencies between input and output.',
-        keyFindings: [
-          'Eliminated recurrence and convolutions entirely',
-          'Achieved new state-of-the-art BLEU scores on WMT translation tasks',
-          'Significantly faster training time due to parallelization',
-          'Self-attention mechanism captures long-range dependencies effectively'
-        ]
-      }
+    if (paperUrl.includes('arxiv')) {
+      // Simulate ArXiv paper extraction
+      return `This is the extracted content from ArXiv paper at ${paperUrl}. 
+      In a real implementation, we would extract the full text content from the PDF.`;
+    } else if (paperUrl.includes('doi.org')) {
+      // Simulate DOI resolution and content extraction
+      return `This is the extracted content from the paper with DOI ${paperUrl}.
+      In a real implementation, we would resolve the DOI and extract content from the publisher's site.`;
+    } else {
+      // Generic extraction for other URLs
+      return `This is the extracted content from the paper at ${paperUrl}.
+      In a real implementation, we would use appropriate extraction methods based on the URL format and content type.`;
     }
-    
-    // Mock response for other papers
-    const mockTitles = [
-      'Deep Learning for Computer Vision: A Comprehensive Survey',
-      'Advances in Natural Language Processing with Transformers',
-      'Quantum Computing: Current State and Future Prospects',
-      'Machine Learning in Healthcare: Applications and Challenges'
-    ]
-    
-    const randomTitle = mockTitles[Math.floor(Math.random() * mockTitles.length)]
-    
-    return {
-      title: randomTitle,
-      summary: 'This research paper presents novel approaches and methodologies in its respective field. The authors conduct comprehensive experiments and provide detailed analysis of their findings. The work contributes significantly to the current understanding and opens new avenues for future research. The methodology is robust and the results are statistically significant.',
-      keyFindings: [
-        'Novel methodology outperforms existing approaches',
-        'Comprehensive experimental validation across multiple datasets',
-        'Significant improvements in accuracy and efficiency',
-        'Practical applications demonstrated in real-world scenarios'
-      ]
-    }
-    
   } catch (error) {
-    console.error('Error generating summary:', error)
-    throw new Error('Failed to generate summary. Please try again.')
+    console.error('Error extracting paper content:', error);
+    throw new Error('Failed to extract paper content. Please check the URL or DOI and try again.');
   }
 }
 
-// Real OpenAI implementation (commented out for demo)
-/*
+/**
+ * Generates a summary of a research paper using OpenAI API
+ * @param {string} paperUrl - URL or DOI of the paper to summarize
+ * @returns {Promise<Object>} - Object containing title, summary, and key findings
+ */
 export async function generateSummary(paperUrl) {
   try {
+    // Extract paper content
+    const paperContent = await extractPaperContent(paperUrl);
+    
+    // Call OpenAI API to generate summary
     const completion = await openai.chat.completions.create({
-      model: "google/gemini-2.0-flash-001",
+      model: "gpt-4-turbo", // Use appropriate model based on needs and budget
       messages: [
         {
           role: "system",
-          content: "You are an expert research assistant. Given a research paper URL, provide a concise summary and key findings. Format your response as JSON with fields: title, summary, keyFindings (array)."
+          content: `You are an expert research assistant that helps researchers understand academic papers.
+          Given the content of a research paper, provide a concise summary and extract key findings.
+          Focus on the main contributions, methodology, and results.
+          Format your response as JSON with the following fields:
+          - title: The title of the paper
+          - summary: A concise summary of the paper (150-200 words)
+          - keyFindings: An array of 3-5 key findings or contributions (each 10-15 words)`
         },
         {
           role: "user",
-          content: `Please summarize the research paper at: ${paperUrl}`
+          content: `Please summarize the following research paper content:\n\n${paperContent}`
         }
       ],
+      response_format: { type: "json_object" },
       max_tokens: 1000,
       temperature: 0.3
-    })
+    });
     
-    const response = JSON.parse(completion.choices[0].message.content)
-    return response
+    // Parse the response
+    const response = JSON.parse(completion.choices[0].message.content);
+    
+    // Validate response format
+    if (!response.title || !response.summary || !Array.isArray(response.keyFindings)) {
+      throw new Error('Invalid response format from AI service');
+    }
+    
+    return {
+      title: response.title,
+      summary: response.summary,
+      keyFindings: response.keyFindings
+    };
+    
   } catch (error) {
-    console.error('Error generating summary:', error)
-    throw new Error('Failed to generate summary. Please try again.')
+    console.error('Error generating summary:', error);
+    
+    // Handle different error types
+    if (error.name === 'RateLimitError') {
+      throw new Error('API rate limit exceeded. Please try again later.');
+    } else if (error.name === 'AuthenticationError') {
+      throw new Error('API authentication failed. Please check your API key.');
+    } else if (error.message.includes('content')) {
+      throw new Error('Could not extract content from the provided paper URL. Please check the URL and try again.');
+    } else {
+      throw new Error('Failed to generate summary. Please try again.');
+    }
   }
 }
-*/

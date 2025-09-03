@@ -1,24 +1,64 @@
 import React, { useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import ActionStatus from './ActionStatus'
+import { useNotification } from '../context/NotificationContext'
 
 export default function AuthEntry() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [status, setStatus] = useState('idle')
-  const { signIn, loading } = useAuth()
+  const [isSignUp, setIsSignUp] = useState(false)
+  const [errorMessage, setErrorMessage] = useState('')
+  const { signIn, signUp, loading } = useAuth()
+  const notification = useNotification()
 
   const handleSubmit = async (e) => {
     e.preventDefault()
     setStatus('pending')
+    setErrorMessage('')
     
-    const result = await signIn(email, password)
-    
-    if (result.success) {
-      setStatus('success')
-    } else {
+    try {
+      if (isSignUp) {
+        // Validate passwords match
+        if (password !== confirmPassword) {
+          setStatus('error')
+          setErrorMessage('Passwords do not match')
+          return
+        }
+        
+        // Sign up
+        const result = await signUp(email, password)
+        
+        if (result.success) {
+          setStatus('success')
+          notification.success('Account created successfully! Welcome to ScholarSift.')
+        } else {
+          setStatus('error')
+          setErrorMessage(result.error || 'Failed to create account')
+        }
+      } else {
+        // Sign in
+        const result = await signIn(email, password)
+        
+        if (result.success) {
+          setStatus('success')
+          notification.success('Signed in successfully!')
+        } else {
+          setStatus('error')
+          setErrorMessage(result.error || 'Invalid email or password')
+        }
+      }
+    } catch (error) {
       setStatus('error')
+      setErrorMessage(error.message || 'An unexpected error occurred')
     }
+  }
+
+  const toggleMode = () => {
+    setIsSignUp(!isSignUp)
+    setStatus('idle')
+    setErrorMessage('')
   }
 
   return (
@@ -30,7 +70,9 @@ export default function AuthEntry() {
         </div>
         
         <div className="card">
-          <h2 className="text-2xl font-semibold mb-6 text-center">Welcome Back</h2>
+          <h2 className="text-2xl font-semibold mb-6 text-center">
+            {isSignUp ? 'Create Account' : 'Welcome Back'}
+          </h2>
           
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
@@ -63,20 +105,53 @@ export default function AuthEntry() {
               />
             </div>
             
-            <ActionStatus status={status} />
+            {isSignUp && (
+              <div>
+                <label htmlFor="confirm-password" className="block text-sm font-medium text-gray-700 mb-2">
+                  Confirm Password
+                </label>
+                <input
+                  id="confirm-password"
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className="input"
+                  placeholder="••••••••"
+                  required
+                />
+              </div>
+            )}
+            
+            <ActionStatus 
+              status={status} 
+              message={errorMessage || undefined}
+            />
             
             <button
               type="submit"
               disabled={loading}
               className="btn-primary w-full"
             >
-              {loading ? 'Signing In...' : 'Sign In'}
+              {loading 
+                ? (isSignUp ? 'Creating Account...' : 'Signing In...') 
+                : (isSignUp ? 'Create Account' : 'Sign In')
+              }
             </button>
           </form>
           
           <div className="mt-6 text-center">
-            <p className="text-sm text-gray-600">
-              Demo credentials: any email/password
+            <button 
+              onClick={toggleMode}
+              className="text-sm text-primary hover:underline"
+            >
+              {isSignUp 
+                ? 'Already have an account? Sign in' 
+                : 'Need an account? Sign up'
+              }
+            </button>
+            
+            <p className="text-xs text-gray-500 mt-2">
+              Demo mode: Any email/password combination will work
             </p>
           </div>
         </div>
